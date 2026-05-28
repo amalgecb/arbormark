@@ -692,6 +692,11 @@ body, html {
     transition: all 0.3s;
 }
 
+select option {
+    background-color: #121a16;
+    color: #ffffff;
+}
+
 .input-group input:focus, 
 .input-group select:focus, 
 .input-group textarea:focus {
