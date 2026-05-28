@@ -12,7 +12,8 @@ import {
     removeApprovedUsername, 
     getCustomFields, 
     addCustomField, 
-    removeCustomField 
+    removeCustomField,
+    getRegisteredUsers 
 } from './storage.js';
 
 // Application State
@@ -806,8 +807,8 @@ authNextBtn.addEventListener('click', async () => {
         return;
     }
     
-    // Check if already registered
-    const users = JSON.parse(localStorage.getItem('arbormark_registered_users') || '{}');
+    // Check if already registered (asynchronously from hybrid storage)
+    const users = await getRegisteredUsers();
     
     if (users[username]) {
         document.getElementById('login-title').textContent = 'Sign In';
