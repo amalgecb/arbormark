@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ArborMark | Geo-Tree Preservation Platform</title>
+    
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Vector Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet.js Mapping Library CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <!-- Main Map Container -->
+    <div id="map"></div>
+
+    <!-- Floating Top Bar -->
+    <header class="floating-header">
+        <div class="header-logo">
+            <i class="fa-solid fa-tree logo-icon"></i>
+            <span>ArborMark</span>
+        </div>
+        <div class="search-container">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="search-input" placeholder="Search trees by name...">
+            <button id="search-clear-btn" class="hidden-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </header>
+
+    <!-- Map Crosshair Overlay (Visible only when placing a marker) -->
+    <div id="map-crosshair" class="hidden">
+        <div class="crosshair-ring"></div>
+        <i class="fa-solid fa-plus crosshair-icon"></i>
+        <div class="crosshair-tooltip">Tap to mark tree at center</div>
+    </div>
+
+    <!-- Floating Action Buttons (FABs) -->
+    <div class="fab-container-left">
+        <button id="locate-btn" class="fab-btn" title="Locate Me">
+            <i class="fa-solid fa-location-crosshairs"></i>
+        </button>
+        <button id="layer-toggle-btn" class="fab-btn" title="Toggle Map Style">
+            <i class="fa-solid fa-layer-group"></i>
+        </button>
+    </div>
+
+    <div class="fab-container-right">
+        <!-- GPX Export (Visible to all) -->
+        <button id="export-gpx-btn" class="fab-btn secondary-fab" title="Export GPX Data">
+            <i class="fa-solid fa-file-arrow-down"></i>
+        </button>
+        
+        <!-- Admin Settings (Visible only to Admin) -->
+        <button id="admin-panel-btn" class="fab-btn secondary-fab hidden" title="Admin Settings">
+            <i class="fa-solid fa-sliders"></i>
+        </button>
+
+        <!-- Profile/Auth (Visible to all, changes icon if logged in) -->
+        <button id="auth-trigger-btn" class="fab-btn" title="Login / Register">
+            <i class="fa-solid fa-user-lock"></i>
+            <span id="user-badge" class="hidden"></span>
+        </button>
+
+        <!-- Place Tree FAB (Green & Pulsing, visible only to logged-in users) -->
+        <button id="add-tree-btn" class="fab-btn primary-fab hidden" title="Mark New Tree">
+            <i class="fa-solid fa-plus"></i>
+        </button>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-notification" class="toast hidden"></div>
+
+    <!-- ---------------- BOTTOM SHEET: TREE DETAILS ---------------- -->
+    <div id="details-sheet" class="bottom-sheet collapsed">
+        <div class="sheet-drag-handle">
+            <div class="drag-bar"></div>
+        </div>
+        <button class="sheet-close-btn" id="close-sheet-btn"><i class="fa-solid fa-chevron-down"></i></button>
+
+        <div class="sheet-content">
+            <!-- View / Details State (Guest & All Users) -->
+            <div id="view-state">
+                <div class="sheet-header">
+                    <div class="title-wrapper">
+                        <h2 id="view-common-name">English Oak</h2>
+                        <h3 id="view-scientific-name">Quercus robur</h3>
+                    </div>
+                    <span id="view-status-badge" class="status-badge status-maintained">Well Maintained</span>
+                </div>
+                
+                <div class="sheet-body">
+                    <div class="metadata-grid">
+                        <div class="metadata-item">
+                            <span class="meta-label">Coordinates</span>
+                            <span class="meta-val" id="view-coords">51.505, -0.09</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="meta-label">Marked By</span>
+                            <span class="meta-val" id="view-author">arborist</span>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Extra Fields (Rendered here when viewing) -->
+                    <div id="view-dynamic-fields-container" class="dynamic-details-section">
+                        <!-- Injected programmatically -->
+                    </div>
+                </div>
+
+                <div class="sheet-footer">
+                    <button id="edit-mode-btn" class="action-btn secondary-btn hidden">
+                        <i class="fa-solid fa-pen-to-square"></i> Edit Details
+                    </button>
+                </div>
+            </div>
+
+            <!-- Edit / Mark New State (Only visible to logged-in permitted users) -->
+            <form id="edit-state" class="hidden" novalidate>
+                <input type="hidden" id="tree-id-input">
+                <input type="hidden" id="tree-lat-input">
+                <input type="hidden" id="tree-lng-input">
+
+                <div class="sheet-header edit-header">
+                    <h2 id="form-title">Mark New Tree</h2>
+                    <p class="coords-subtitle">Location: <span id="form-coords-display">0.0, 0.0</span></p>
+                </div>
+
+                <div class="sheet-body form-body">
+                    <div class="input-group">
+                        <label for="tree-common-name-input">Common Tree Name <span class="required">*</span></label>
+                        <input type="text" id="tree-common-name-input" placeholder="e.g. English Oak" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="tree-scientific-name-input">Scientific Name <span class="required">*</span></label>
+                        <input type="text" id="tree-scientific-name-input" placeholder="e.g. Quercus robur" required>
+                        <small class="helper-text">Two words required for marker rendering (e.g. 'Quercus robur' -> 'Qr')</small>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="tree-status-input">Current Status <span class="required">*</span></label>
+                        <select id="tree-status-input" required>
+                            <option value="well_maintained">Well Maintained (Green)</option>
+                            <option value="needs_care">Needs Care (Orange)</option>
+                            <option value="diseased">Diseased / Damaged (Yellow)</option>
+                            <option value="chopped">Chopped / Stump (Red)</option>
+                            <option value="dead">Dead / Inactive (Grey)</option>
+                        </select>
+                    </div>
+
+                    <!-- Programmatically generated custom fields will render inside this container -->
+                    <div id="dynamic-form-fields-container">
+                        <!-- custom inputs added by admin -->
+                    </div>
+                </div>
+
+                <div class="sheet-footer form-footer">
+                    <button type="button" id="delete-tree-btn" class="action-btn danger-btn hidden">
+                        <i class="fa-solid fa-trash-can"></i> Delete
+                    </button>
+                    <button type="button" id="cancel-edit-btn" class="action-btn secondary-btn">Cancel</button>
+                    <button type="submit" id="save-tree-btn" class="action-btn primary-btn">Save Tree</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ---------------- MODAL: AUTHENTICATION (LOGIN & REGISTRATION) ---------------- -->
+    <div id="auth-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <button class="modal-close-btn" id="close-auth-btn"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div id="auth-step-username" class="auth-step">
+                <div class="auth-header">
+                    <div class="auth-icon-circle"><i class="fa-solid fa-user-shield"></i></div>
+                    <h2>Access Registration</h2>
+                    <p>Enter your username to verify if you are pre-approved by the administrator to contribute.</p>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="input-group">
+                        <label for="auth-username-input">Enter Username</label>
+                        <input type="text" id="auth-username-input" placeholder="e.g. arborist" autocomplete="username">
+                        <p id="username-error-msg" class="error-text hidden"></p>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button id="auth-next-btn" class="action-btn primary-btn w-full">Verify Username</button>
+                </div>
+            </div>
+
+            <!-- Login / Password Submission Flow -->
+            <div id="auth-step-login" class="auth-step hidden">
+                <div class="auth-header">
+                    <div class="auth-icon-circle"><i class="fa-solid fa-key"></i></div>
+                    <h2 id="login-title">Sign In</h2>
+                    <p id="login-subtitle">Enter your password to unlock mapping features.</p>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="input-group">
+                        <label for="auth-password-input">Password</label>
+                        <input type="password" id="auth-password-input" placeholder="••••••••" autocomplete="current-password">
+                        <p id="login-error-msg" class="error-text hidden"></p>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button id="auth-back-to-username-btn" class="action-btn secondary-btn">Back</button>
+                    <button id="auth-login-btn" class="action-btn primary-btn">Sign In</button>
+                </div>
+            </div>
+
+            <!-- Pre-Approved Registration Flow -->
+            <div id="auth-step-register" class="auth-step hidden">
+                <div class="auth-header">
+                    <div class="auth-icon-circle accent-blue"><i class="fa-solid fa-user-plus"></i></div>
+                    <h2>Register Account</h2>
+                    <p>Your username is approved! Choose a password to finalize your registration.</p>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="input-group">
+                        <label for="reg-password-input">Choose Password</label>
+                        <input type="password" id="reg-password-input" placeholder="Minimum 4 characters" autocomplete="new-password">
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-confirm-password-input">Confirm Password</label>
+                        <input type="password" id="reg-confirm-password-input" placeholder="Re-enter password" autocomplete="new-password">
+                        <p id="register-error-msg" class="error-text hidden"></p>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button id="auth-back-from-reg-btn" class="action-btn secondary-btn">Back</button>
+                    <button id="auth-register-btn" class="action-btn primary-btn accent-blue-btn">Register</button>
+                </div>
+            </div>
+
+            <!-- Logged In / Profile Control Sheet -->
+            <div id="auth-step-profile" class="auth-step hidden">
+                <div class="auth-header">
+                    <div class="auth-icon-circle user-online"><i class="fa-solid fa-circle-user"></i></div>
+                    <h2 id="profile-welcome">Welcome, User!</h2>
+                    <p id="profile-role-text">You are registered as a permitted contributor.</p>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="profile-stats">
+                        <div class="stat-box">
+                            <span class="stat-num" id="user-trees-count">0</span>
+                            <span class="stat-label">Trees Marked</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="auth-status-icon"><i class="fa-solid fa-circle-check text-green"></i></span>
+                            <span class="stat-label">Can Edit Map</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer flex-col">
+                    <button id="auth-logout-btn" class="action-btn danger-btn w-full mb-2">
+                        <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ---------------- MODAL: ADMIN CONTROL PANEL ---------------- -->
+    <div id="admin-panel" class="modal-overlay hidden">
+        <div class="modal-card admin-card">
+            <button class="modal-close-btn" id="close-admin-btn"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div class="admin-header">
+                <h2><i class="fa-solid fa-sliders"></i> Admin Control Panel</h2>
+                <p>Manage editing privileges and configure custom dynamic fields for tree marking.</p>
+            </div>
+
+            <!-- Tab Switching Nav -->
+            <div class="admin-tabs">
+                <button class="tab-btn active" id="tab-users-btn">
+                    <i class="fa-solid fa-users-gear"></i> Permitted Users
+                </button>
+                <button class="tab-btn" id="tab-fields-btn">
+                    <i class="fa-solid fa-square-plus"></i> Dynamic Fields
+                </button>
+            </div>
+
+            <!-- Tab 1: Permitted Usernames -->
+            <div id="tab-users-content" class="tab-content">
+                <div class="admin-section">
+                    <h3>Approve Contributor</h3>
+                    <p class="section-desc">Add usernames allowed to register and edit the map.</p>
+                    <div class="flex-row">
+                        <input type="text" id="admin-new-username" placeholder="e.g. green_hero">
+                        <button id="admin-add-username-btn" class="action-btn primary-btn">Add User</button>
+                    </div>
+                    <p id="admin-user-error" class="error-text hidden"></p>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Currently Permitted Usernames</h3>
+                    <div class="username-list-container">
+                        <ul id="permitted-users-list">
+                            <!-- Injected dynamically -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Dynamic Custom Fields -->
+            <div id="tab-fields-content" class="tab-content hidden">
+                <div class="admin-section">
+                    <h3>Create Custom Data Field</h3>
+                    <p class="section-desc">These inputs appear on the tree-marking form to capture additional data.</p>
+                    
+                    <form id="admin-add-field-form" novalidate>
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label for="field-label-input">Field Label</label>
+                                <input type="text" id="field-label-input" placeholder="e.g. Trunk Girth (cm)" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="field-type-input">Field Type</label>
+                                <select id="field-type-input" required>
+                                    <option value="text">Single-line Text</option>
+                                    <option value="number">Numeric Value</option>
+                                    <option value="select">Dropdown List</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Dropdown Options (Visible only if type is 'select') -->
+                        <div class="input-group hidden" id="field-options-group">
+                            <label for="field-options-input">Dropdown Selections (comma separated)</label>
+                            <input type="text" id="field-options-input" placeholder="e.g. Excellent, Normal, Weak, Decayed">
+                            <small class="helper-text">Enter list items separated by commas</small>
+                        </div>
+
+                        <button type="submit" id="admin-save-field-btn" class="action-btn primary-btn mt-2">
+                            <i class="fa-solid fa-circle-plus"></i> Add Dynamic Field
+                        </button>
+                    </form>
+                    <p id="admin-field-error" class="error-text hidden"></p>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Active Dynamic Fields</h3>
+                    <div class="custom-fields-list-container">
+                        <ul id="custom-fields-list">
+                            <!-- Injected dynamically -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet.js Mapping Library JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Main Application Entry Module -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
