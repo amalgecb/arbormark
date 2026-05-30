@@ -3,17 +3,17 @@
  */
 
 import { auth } from './auth.js';
-import { 
-    getTrees, 
-    saveTree, 
-    deleteTree, 
-    getApprovedUsernames, 
-    addApprovedUsername, 
-    removeApprovedUsername, 
-    getCustomFields, 
-    addCustomField, 
+import {
+    getTrees,
+    saveTree,
+    deleteTree,
+    getApprovedUsernames,
+    addApprovedUsername,
+    removeApprovedUsername,
+    getCustomFields,
+    addCustomField,
     removeCustomField,
-    getRegisteredUsers 
+    getRegisteredUsers
 } from './storage.js';
 
 // Application State
@@ -120,13 +120,13 @@ const customFieldsList = document.getElementById('custom-fields-list');
 function showToast(message, type = 'success') {
     toastNotification.textContent = message;
     toastNotification.className = 'toast show';
-    
+
     if (type === 'error') {
         toastNotification.classList.add('toast-error');
     } else if (type === 'warning') {
         toastNotification.classList.add('toast-warning');
     }
-    
+
     setTimeout(() => {
         toastNotification.classList.remove('show');
     }, 3500);
@@ -137,23 +137,23 @@ function showToast(message, type = 'success') {
    ---------------------------------------------------- */
 function getScientificInitials(scientificName) {
     if (!scientificName) return '??';
-    
+
     const words = scientificName.trim().split(/\s+/).filter(Boolean);
     if (words.length === 0) return '??';
-    
+
     if (words.length === 1) {
         const word = words[0];
         const initial1 = word.charAt(0).toUpperCase();
         const initial2 = word.length > 1 ? word.charAt(1).toLowerCase() : '';
         return initial1 + initial2;
     }
-    
+
     const genus = words[0];
     const species = words[1];
-    
+
     const genusInitial = genus.charAt(0).toUpperCase();
     const speciesInitial = species.charAt(0).toLowerCase();
-    
+
     return genusInitial + speciesInitial;
 }
 
@@ -162,7 +162,7 @@ function getScientificInitials(scientificName) {
    ---------------------------------------------------- */
 function openBottomSheet(full = false) {
     detailsSheet.classList.remove('collapsed');
-    
+
     if (window.innerWidth < 768) {
         if (full) {
             detailsSheet.classList.remove('open-partial');
@@ -179,7 +179,7 @@ function openBottomSheet(full = false) {
 function closeBottomSheet() {
     detailsSheet.classList.add('collapsed');
     detailsSheet.classList.remove('open-partial', 'open-full');
-    
+
     clearMarkerHighlights();
     currentSelectedTree = null;
 }
@@ -204,46 +204,46 @@ function highlightMarker(treeId) {
    LEAFLET MAP CONTROLLER
    ---------------------------------------------------- */
 async function initMap() {
-    const defaultCenter = [51.505, -0.09];
-    
+    const defaultCenter = [8.5241, 76.9366]; // Trivandrum, Kerala, India
+
     // Enable map zooming up to level 22 (for extreme pinpointing accuracy)
     map = L.map('map', {
         zoomControl: false,
         maxZoom: 22
     }).setView(defaultCenter, 15);
-    
+
     // 1. Define standard OpenStreetMap Layer (Beautifully colored vector-style map)
     const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 22,
         maxNativeZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     });
-    
+
     // 2. Define Satellite Imagery Layer (Stretches from zoom 19 to 22 without disappearing)
     const satImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 22,
         maxNativeZoom: 19,
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP'
     });
-    
+
     // 3. Define Satellite Hybrid Boundary and Label Overlay Layer
     const satLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 22,
         maxNativeZoom: 19,
         attribution: 'Labels &copy; Esri'
     });
-    
+
     // Set OpenStreetMap standard colored map as default on startup
     osmLayer.addTo(map);
     let activeMapStyle = 'standard';
     let currentLayers = [osmLayer];
-    
+
     // Connect map layer style toggler FAB
     const layerToggleBtn = document.getElementById('layer-toggle-btn');
     if (layerToggleBtn) {
         layerToggleBtn.addEventListener('click', () => {
             currentLayers.forEach(l => map.removeLayer(l));
-            
+
             if (activeMapStyle === 'standard') {
                 // Switch to Satellite Hybrid Mode
                 satImagery.addTo(map);
@@ -262,10 +262,10 @@ async function initMap() {
             }
         });
     }
-    
+
     // Setup initial marker renders
     await renderTreeMarkers();
-    
+
     // Setup Map Click Handler for marker placement
     map.on('click', (e) => {
         if (!isPlacingMarker) {
@@ -273,6 +273,15 @@ async function initMap() {
         } else {
             triggerAddTreeForm(e.latlng.lat, e.latlng.lng);
         }
+    });
+
+    // Setup Long Click (contextmenu) for quick marker placement
+    map.on('contextmenu', (e) => {
+        if (!auth.isLoggedIn()) {
+            showToast('Please sign in to mark trees.', 'warning');
+            return;
+        }
+        triggerAddTreeForm(e.latlng.lat, e.latlng.lng);
     });
 
     if (navigator.geolocation) {
@@ -296,9 +305,9 @@ async function initMap() {
 async function renderTreeMarkers() {
     markers.forEach(marker => map.removeLayer(marker));
     markers.clear();
-    
+
     const trees = await getTrees();
-    
+
     const filteredTrees = trees.filter(tree => {
         if (!activeFilterQuery) return true;
         const q = activeFilterQuery.toLowerCase();
@@ -308,28 +317,28 @@ async function renderTreeMarkers() {
             (tree.status && tree.status.replace('_', ' ').toLowerCase().includes(q))
         );
     });
-    
+
     filteredTrees.forEach(tree => {
         const initials = getScientificInitials(tree.scientificName);
-        
+
         const markerIcon = L.divIcon({
             className: `custom-tree-marker ${tree.status}`,
             html: `<span>${initials}</span>`,
             iconSize: [36, 36],
             iconAnchor: [18, 18]
         });
-        
+
         const marker = L.marker([tree.lat, tree.lng], { icon: markerIcon }).addTo(map);
-        
+
         marker.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
-            
+
             const offsetLat = window.innerWidth < 768 ? tree.lat - 0.003 : tree.lat;
             map.panTo([offsetLat, tree.lng], { animate: true, duration: 0.6 });
-            
+
             showTreeDetails(tree);
         });
-        
+
         markers.set(tree.id, marker);
     });
 }
@@ -340,35 +349,35 @@ async function renderTreeMarkers() {
 async function compileDynamicFieldsForm(treeData = null) {
     dynamicFormFieldsContainer.innerHTML = '';
     const customFields = await getCustomFields();
-    
+
     if (customFields.length === 0) {
         dynamicFormFieldsContainer.innerHTML = '<p class="helper-text">No additional custom fields configured.</p>';
         return;
     }
-    
+
     customFields.forEach(field => {
         const inputGroup = document.createElement('div');
         inputGroup.className = 'input-group';
-        
+
         const label = document.createElement('label');
         label.setAttribute('for', `dynamic-${field.id}`);
         label.textContent = field.label;
         inputGroup.appendChild(label);
-        
+
         let inputEl = null;
         const savedValue = treeData && treeData.customFields ? treeData.customFields[field.id] || '' : '';
-        
+
         if (field.type === 'select') {
             inputEl = document.createElement('select');
             inputEl.id = `dynamic-${field.id}`;
-            
+
             const options = field.options.split(',').map(o => o.trim()).filter(Boolean);
-            
+
             const placeholderOpt = document.createElement('option');
             placeholderOpt.value = '';
             placeholderOpt.textContent = '-- Select Selection --';
             inputEl.appendChild(placeholderOpt);
-            
+
             options.forEach(opt => {
                 const optEl = document.createElement('option');
                 optEl.value = opt;
@@ -385,7 +394,7 @@ async function compileDynamicFieldsForm(treeData = null) {
             inputEl.placeholder = field.type === 'number' ? 'e.g. 15' : 'Enter details...';
             inputEl.value = savedValue;
         }
-        
+
         inputGroup.appendChild(inputEl);
         dynamicFormFieldsContainer.appendChild(inputGroup);
     });
@@ -394,31 +403,31 @@ async function compileDynamicFieldsForm(treeData = null) {
 async function compileDynamicFieldsView(treeData) {
     viewDynamicFieldsContainer.innerHTML = '';
     const customFields = await getCustomFields();
-    
+
     let hasDetails = false;
-    
+
     customFields.forEach(field => {
         const val = treeData.customFields ? treeData.customFields[field.id] : '';
         if (val) {
             hasDetails = true;
-            
+
             const row = document.createElement('div');
             row.className = 'detail-row';
-            
+
             const labelSpan = document.createElement('span');
             labelSpan.className = 'detail-label';
             labelSpan.textContent = field.label;
-            
+
             const valSpan = document.createElement('span');
             valSpan.className = 'detail-value';
             valSpan.textContent = val;
-            
+
             row.appendChild(labelSpan);
             row.appendChild(valSpan);
             viewDynamicFieldsContainer.appendChild(row);
         }
     });
-    
+
     if (!hasDetails) {
         viewDynamicFieldsContainer.innerHTML = '<p class="helper-text text-center mt-2">No additional custom field details logged.</p>';
     }
@@ -430,82 +439,82 @@ async function compileDynamicFieldsView(treeData) {
 async function showTreeDetails(tree) {
     currentSelectedTree = tree;
     highlightMarker(tree.id);
-    
+
     viewCommonName.textContent = tree.commonName;
     viewScientificName.textContent = tree.scientificName;
     viewCoords.textContent = `${tree.lat.toFixed(6)}, ${tree.lng.toFixed(6)}`;
     viewAuthor.textContent = tree.createdBy || 'anonymous';
-    
+
     viewStatusBadge.className = 'status-badge';
     viewStatusBadge.classList.add(`status-${tree.status}`);
-    
+
     const cleanStatus = tree.status.replace('_', ' ');
     viewStatusBadge.textContent = cleanStatus.charAt(0).toUpperCase() + cleanStatus.slice(1);
-    
+
     // Populate Dynamic Fields View
     await compileDynamicFieldsView(tree);
-    
+
     if (auth.isLoggedIn()) {
         editModeBtn.classList.remove('hidden');
     } else {
         editModeBtn.classList.add('hidden');
     }
-    
+
     viewStateContainer.classList.remove('hidden');
     editForm.classList.add('hidden');
-    
+
     openBottomSheet(false);
 }
 
 async function triggerAddTreeForm(lat, lng) {
     disablePlacingMode();
-    
+
     currentSelectedTree = null;
-    
+
     treeIdInput.value = '';
     treeLatInput.value = lat;
     treeLngInput.value = lng;
     formCoordsDisplay.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    
+
     formTitle.textContent = 'Mark New Tree';
     commonNameInput.value = '';
     scientificNameInput.value = '';
     statusInput.value = 'well_maintained';
-    
+
     // Compile custom dynamic fields
     await compileDynamicFieldsForm();
-    
+
     deleteTreeBtn.classList.add('hidden');
-    
+
     viewStateContainer.classList.add('hidden');
     editForm.classList.remove('hidden');
-    
+
     openBottomSheet(true);
 }
 
 async function triggerEditTreeForm() {
     if (!currentSelectedTree) return;
-    
+
     const tree = currentSelectedTree;
-    
+
     treeIdInput.value = tree.id;
     treeLatInput.value = tree.lat;
     treeLngInput.value = tree.lng;
     formCoordsDisplay.textContent = `${tree.lat.toFixed(6)}, ${tree.lng.toFixed(6)}`;
-    
+
     formTitle.textContent = 'Modify Tree Record';
     commonNameInput.value = tree.commonName;
     scientificNameInput.value = tree.scientificName;
     statusInput.value = tree.status;
-    
+
     // Compile dynamic inputs with existing data
     await compileDynamicFieldsForm(tree);
-    
+
     deleteTreeBtn.classList.remove('hidden');
-    
+
     viewStateContainer.classList.add('hidden');
     editForm.classList.remove('hidden');
-    
+
     openBottomSheet(true);
 }
 
@@ -517,13 +526,13 @@ function enablePlacingMode() {
         showToast('Please sign in to mark trees.', 'warning');
         return;
     }
-    
+
     isPlacingMarker = true;
     closeBottomSheet();
-    
+
     mapCrosshair.classList.remove('hidden');
     addTreeBtn.classList.add('cancel-mode');
-    
+
     showToast('Pan map to location and tap crosshair center to place marker', 'warning');
 }
 
@@ -553,23 +562,23 @@ mapCrosshair.addEventListener('click', () => {
    ---------------------------------------------------- */
 editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const commonName = commonNameInput.value.trim();
     const scientificName = scientificNameInput.value.trim();
     const status = statusInput.value;
     const lat = parseFloat(treeLatInput.value);
     const lng = parseFloat(treeLngInput.value);
-    
+
     let hasError = false;
-    
+
     commonNameInput.parentElement.classList.remove('has-error');
     scientificNameInput.parentElement.classList.remove('has-error');
-    
+
     if (!commonName) {
         commonNameInput.parentElement.classList.add('has-error');
         hasError = true;
     }
-    
+
     if (!scientificName) {
         scientificNameInput.parentElement.classList.add('has-error');
         hasError = true;
@@ -581,12 +590,12 @@ editForm.addEventListener('submit', async (e) => {
             hasError = true;
         }
     }
-    
+
     if (hasError) {
         showToast('Please complete all required fields.', 'error');
         return;
     }
-    
+
     const customFieldsData = {};
     const customFields = await getCustomFields();
     customFields.forEach(field => {
@@ -595,7 +604,7 @@ editForm.addEventListener('submit', async (e) => {
             customFieldsData[field.id] = inputEl.value.trim();
         }
     });
-    
+
     const treeRecord = {
         commonName,
         scientificName,
@@ -604,19 +613,19 @@ editForm.addEventListener('submit', async (e) => {
         lng,
         customFields: customFieldsData
     };
-    
+
     if (treeIdInput.value) {
         treeRecord.id = treeIdInput.value;
     } else {
         treeRecord.createdBy = auth.getUsername() || 'anonymous';
     }
-    
+
     await saveTree(treeRecord);
-    
+
     showToast(treeRecord.id ? 'Tree record updated successfully!' : 'New tree marked successfully!');
-    
+
     await renderTreeMarkers();
-    
+
     if (treeRecord.id) {
         const updatedTrees = await getTrees();
         const freshRecord = updatedTrees.find(t => t.id === treeRecord.id);
@@ -629,7 +638,7 @@ editForm.addEventListener('submit', async (e) => {
 // Delete Record Event
 deleteTreeBtn.addEventListener('click', async () => {
     if (!currentSelectedTree) return;
-    
+
     if (confirm(`Are you sure you want to delete the record for ${currentSelectedTree.commonName}?`)) {
         await deleteTree(currentSelectedTree.id);
         showToast('Tree record removed from map.', 'warning');
@@ -655,28 +664,28 @@ auth.onAuthStateChanged((user) => {
         authTriggerBtn.innerHTML = `<i class="fa-solid fa-user-check"></i>`;
         userBadge.textContent = user.username.slice(0, 2);
         userBadge.classList.remove('hidden');
-        
+
         addTreeBtn.classList.remove('hidden');
-        
+
         if (user.isAdmin) {
             adminPanelBtn.classList.remove('hidden');
         } else {
             adminPanelBtn.classList.add('hidden');
         }
-        
+
         if (currentSelectedTree) {
             editModeBtn.classList.remove('hidden');
         }
     } else {
         authTriggerBtn.innerHTML = `<i class="fa-solid fa-user-lock"></i>`;
         userBadge.classList.add('hidden');
-        
+
         addTreeBtn.classList.add('hidden');
         adminPanelBtn.classList.add('hidden');
         editModeBtn.classList.add('hidden');
-        
+
         disablePlacingMode();
-        
+
         if (!editForm.classList.contains('hidden')) {
             closeBottomSheet();
         }
@@ -692,9 +701,9 @@ async function exportGpxData() {
         showToast('No tree records available to export.', 'warning');
         return;
     }
-    
+
     const customFieldsList = await getCustomFields();
-    
+
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="ArborMark App" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
     <metadata>
@@ -706,9 +715,9 @@ async function exportGpxData() {
 
     trees.forEach(tree => {
         const statusClean = tree.status.replace('_', ' ').toUpperCase();
-        
+
         let desc = `Scientific Name: ${tree.scientificName} | Status: ${statusClean}`;
-        
+
         if (tree.customFields) {
             customFieldsList.forEach(cf => {
                 const val = tree.customFields[cf.id];
@@ -717,12 +726,12 @@ async function exportGpxData() {
                 }
             });
         }
-        
+
         desc += ` | Marked by: ${tree.createdBy || 'anonymous'}`;
-        
+
         const cleanName = tree.commonName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const cleanDesc = desc.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        
+
         gpx += `    <wpt lat="${tree.lat.toFixed(6)}" lon="${tree.lng.toFixed(6)}">
         <name>${cleanName}</name>
         <desc>${cleanDesc}</desc>
@@ -731,12 +740,12 @@ async function exportGpxData() {
     </wpt>
 `;
     });
-    
+
     gpx += `</gpx>`;
-    
+
     const blob = new Blob([gpx], { type: 'application/gpx+xml;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `arbormark_export_${Date.now()}.gpx`);
@@ -744,7 +753,7 @@ async function exportGpxData() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
+
     showToast(`Exported ${trees.length} tree points as GPX. Check your downloads!`);
 }
 
@@ -758,18 +767,18 @@ authTriggerBtn.addEventListener('click', async () => {
     authPasswordInput.value = '';
     regPasswordInput.value = '';
     regConfirmPasswordInput.value = '';
-    
+
     usernameErrorMsg.classList.add('hidden');
     loginErrorMsg.classList.add('hidden');
     registerErrorMsg.classList.add('hidden');
-    
+
     if (auth.isLoggedIn()) {
         profileWelcome.textContent = `Hello, ${auth.getUsername()}!`;
-        
+
         const allTrees = await getTrees();
         const usersTrees = allTrees.filter(t => t.createdBy === auth.getUsername()).length;
         userTreesCount.textContent = usersTrees;
-        
+
         authStepUsername.classList.add('hidden');
         authStepLogin.classList.add('hidden');
         authStepRegister.classList.add('hidden');
@@ -780,7 +789,7 @@ authTriggerBtn.addEventListener('click', async () => {
         authStepRegister.classList.add('hidden');
         authStepProfile.classList.add('hidden');
     }
-    
+
     authModal.classList.remove('hidden');
 });
 
@@ -793,27 +802,27 @@ authModal.addEventListener('click', (e) => {
 authNextBtn.addEventListener('click', async () => {
     const username = authUsernameInput.value.trim().toLowerCase();
     usernameErrorMsg.classList.add('hidden');
-    
+
     if (!username) {
         usernameErrorMsg.textContent = 'Please enter a username.';
         usernameErrorMsg.classList.remove('hidden');
         return;
     }
-    
+
     const isApproved = await auth.isUsernameApproved(username);
     if (!isApproved) {
         usernameErrorMsg.textContent = 'This username is not approved to register or edit the map. Please request permission from the admin.';
         usernameErrorMsg.classList.remove('hidden');
         return;
     }
-    
+
     // Check if already registered (asynchronously from hybrid storage)
     const users = await getRegisteredUsers();
-    
+
     if (users[username]) {
         document.getElementById('login-title').textContent = 'Sign In';
         document.getElementById('login-subtitle').textContent = `Welcome back, ${username}! Please enter your password to login.`;
-        
+
         authStepUsername.classList.add('hidden');
         authStepLogin.classList.remove('hidden');
     } else {
@@ -836,9 +845,9 @@ authBackFromRegBtn.addEventListener('click', () => {
 authLoginBtn.addEventListener('click', async () => {
     const username = authUsernameInput.value.trim().toLowerCase();
     const password = authPasswordInput.value;
-    
+
     loginErrorMsg.classList.add('hidden');
-    
+
     try {
         await auth.login(username, password);
         showToast(`Successfully logged in as ${username}!`);
@@ -854,15 +863,15 @@ authRegisterBtn.addEventListener('click', async () => {
     const username = authUsernameInput.value.trim().toLowerCase();
     const password = regPasswordInput.value;
     const confirmPass = regConfirmPasswordInput.value;
-    
+
     registerErrorMsg.classList.add('hidden');
-    
+
     if (password !== confirmPass) {
         registerErrorMsg.textContent = 'Passwords do not match.';
         registerErrorMsg.classList.remove('hidden');
         return;
     }
-    
+
     try {
         await auth.register(username, password);
         showToast(`Account registered and logged in as ${username}!`);
@@ -886,9 +895,9 @@ authLogoutBtn.addEventListener('click', () => {
 adminPanelBtn.addEventListener('click', async () => {
     await renderAdminUsersList();
     await renderAdminFieldsList();
-    
+
     tabUsersBtn.click();
-    
+
     adminPanelModal.classList.remove('hidden');
 });
 
@@ -923,20 +932,20 @@ fieldTypeInput.addEventListener('change', () => {
 async function renderAdminUsersList() {
     permittedUsersList.innerHTML = '';
     const users = await getApprovedUsernames();
-    
+
     users.forEach(username => {
         const li = document.createElement('li');
-        
+
         const textWrapper = document.createElement('div');
         textWrapper.className = 'admin-username-tag';
         textWrapper.textContent = username;
-        
+
         if (username === 'admin') {
             textWrapper.textContent += ' (System Admin)';
         }
-        
+
         li.appendChild(textWrapper);
-        
+
         if (username !== 'admin') {
             const delBtn = document.createElement('button');
             delBtn.className = 'admin-delete-btn';
@@ -950,7 +959,7 @@ async function renderAdminUsersList() {
             });
             li.appendChild(delBtn);
         }
-        
+
         permittedUsersList.appendChild(li);
     });
 }
@@ -958,13 +967,13 @@ async function renderAdminUsersList() {
 adminAddUsernameBtn.addEventListener('click', async () => {
     const user = adminNewUsername.value.trim().toLowerCase();
     adminUserError.classList.add('hidden');
-    
+
     if (!user) {
         adminUserError.textContent = 'Please enter a valid username.';
         adminUserError.classList.remove('hidden');
         return;
     }
-    
+
     const added = await addApprovedUsername(user);
     if (added) {
         showToast(`User "${user}" successfully pre-approved for registration!`);
@@ -980,30 +989,30 @@ adminAddUsernameBtn.addEventListener('click', async () => {
 async function renderAdminFieldsList() {
     customFieldsList.innerHTML = '';
     const fields = await getCustomFields();
-    
+
     if (fields.length === 0) {
         customFieldsList.innerHTML = '<p class="helper-text text-center py-4">No custom fields logged.</p>';
         return;
     }
-    
+
     fields.forEach(field => {
         const li = document.createElement('li');
-        
+
         const info = document.createElement('div');
         info.className = 'field-info';
-        
+
         const label = document.createElement('span');
         label.className = 'field-label-display';
         label.textContent = field.label;
-        
+
         const pill = document.createElement('span');
         pill.className = 'field-type-pill';
         pill.textContent = field.type;
-        
+
         info.appendChild(label);
         info.appendChild(pill);
         li.appendChild(info);
-        
+
         const delBtn = document.createElement('button');
         delBtn.className = 'admin-delete-btn';
         delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
@@ -1015,7 +1024,7 @@ async function renderAdminFieldsList() {
             }
         });
         li.appendChild(delBtn);
-        
+
         customFieldsList.appendChild(li);
     });
 }
@@ -1023,32 +1032,32 @@ async function renderAdminFieldsList() {
 adminAddFieldForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     adminFieldError.classList.add('hidden');
-    
+
     const label = fieldLabelInput.value.trim();
     const type = fieldTypeInput.value;
     const options = fieldOptionsInput.value.trim();
-    
+
     if (!label) {
         adminFieldError.textContent = 'Please enter a field label.';
         adminFieldError.classList.remove('hidden');
         return;
     }
-    
+
     if (type === 'select' && !options) {
         adminFieldError.textContent = 'Please enter comma-separated choices for dropdown selections.';
         adminFieldError.classList.remove('hidden');
         return;
     }
-    
+
     try {
         await addCustomField({ label, type, options });
         showToast(`Custom field "${label}" added!`);
-        
+
         fieldLabelInput.value = '';
         fieldTypeInput.value = 'text';
         fieldOptionsInput.value = '';
         fieldOptionsGroup.classList.add('hidden');
-        
+
         await renderAdminFieldsList();
     } catch (err) {
         adminFieldError.textContent = err.message;
@@ -1061,13 +1070,13 @@ adminAddFieldForm.addEventListener('submit', async (e) => {
    ---------------------------------------------------- */
 searchInput.addEventListener('input', async () => {
     activeFilterQuery = searchInput.value;
-    
+
     if (activeFilterQuery) {
         searchClearBtn.classList.remove('hidden');
     } else {
         searchClearBtn.classList.add('hidden');
     }
-    
+
     await renderTreeMarkers();
 });
 
@@ -1088,27 +1097,27 @@ locateBtn.addEventListener('click', () => {
         showToast('GPS geolocation is not supported by your device browser.', 'error');
         return;
     }
-    
+
     showToast('Locating device position...', 'warning');
-    
+
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            
+
             map.setView([lat, lng], 17, { animate: true, duration: 1.0 });
-            
+
             const userLocIcon = L.divIcon({
                 className: 'custom-tree-marker active-marker',
                 html: '<i class="fa-solid fa-crosshairs text-green"></i>',
                 iconSize: [28, 28]
             });
             const locationMarker = L.marker([lat, lng], { icon: userLocIcon }).addTo(map);
-            
+
             setTimeout(() => {
                 map.removeLayer(locationMarker);
             }, 5000);
-            
+
             showToast('Device location centered successfully!');
         },
         (err) => {
